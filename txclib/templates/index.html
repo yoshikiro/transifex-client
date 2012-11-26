@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Bootstrap, from Twitter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <!-- Le styles -->
+    <link href="{{ url_for('static', filename='css/bootstrap.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/bootstrap-responsive.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/txclient.css') }}" rel="stylesheet">
+   
+
+    <style type="text/css">
+      span.lang { color: #383; background-color: #F0F7F0; }
+      .edit { padding: 2px 3px; border-bottom: 1px dotted transparent; }
+      .edit:hover { cursor: text; border-bottom: 1px dotted #bbb; }
+      .res-row:hover { background-color: #F5F5F5; }
+    </style>
+
+    <script type="text/javascript">
+      var SCRIPT_ROOT = {{ request.script_root|tojson|safe }};
+    </script>
+    <script>
+	//for the select unselect all
+	    function toggle(source) {
+                     checkboxes = document.getElementsByClassName('rowcheckbox');
+                     for(var i in checkboxes)
+                     checkboxes[i].checked= source.checked;
+             }
+     </script>
+  </head>
+
+  <body>
+
+    <!-- header -->
+    <div class="navbar">
+      <div class="navbar-inner">
+        <div class="container">
+          <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </a>
+          <a class="brand" href="https://www.transifex.com/"><img src="{{ url_for('static', filename='img/tx-logo-whiteorange.png') }}" /></a>
+          <div class="btn-group pull-right">
+            <a class="btn dropdown-toggle" data-toggle="dropdown" href="#">
+              <i class="icon-user"></i> {{ username }}
+              <span class="caret"></span>
+            </a>
+            <ul class="dropdown-menu">
+              <li><a href="https://www.transifex.com/home/">Dashboard on Transifex</a></li>
+            </ul>
+          </div>
+          <div class="nav-collapse">
+            <ul class="nav">
+              <li class="active"><a href="#">Client</a></li>
+            </ul>
+          </div><!--/.nav-collapse -->
+        </div>
+      </div>
+    </div>
+
+    <div class="container show-grid reslist">
+
+        {% for res in res_list %}
+        <div class="row span10 res-row" id="tr_{{ res.id }}">
+
+          <div class="span3 tdbox">
+            <label class="checkbox">
+		    <input type="checkbox" id="optionsCheckbox" value="option1" class="rowcheckbox" name="{{ res.id }}">
+		    <span data-action='rename' class="resname edit"  id="{{ res.id }}">{{ res.id }}</span>
+            </span>
+            </label>
+          </div>
+
+          <div class="span5 tdbox">
+            <span class="edit resexpr" data-id="{{ res.id }}">{{ res.expr_highlight|safe }}</span></dd>
+          </div>
+          <div class="span1 tdbox">
+		  <span class="label label-default" id="zaab_{{ res.id }}" >OK</span>
+		   </div> 
+		   <button type="submit" onclick=pickUpResource("{{ res.id }}+{{ username }}+{{ password }}") id="pickMe" class="btn" style="float:right;top:-6px;"  value="Select" name="{{ res.id }}"><i class="icon-arrow-right"></i>  </button>
+ 	  
+        </div><!--/row-->
+        {% endfor %}
+
+        <div class="row span10" id="tr_th" style="background-color: #F9F9F9">
+          <div class="span3 tdbox">
+		  <label class="checkbox"><input type="checkbox" onClick="toggle(this)" id="optionsCheckbox" value="option1"> Select all</label>
+		 <!--
+		  <button type="submit" class="btn"><i class="icon-plus"></i></button>
+		  <button type="submit" class="btb btn-danger"><i class="icon-minus icon-white"></i></button>
+		  -->
+	  </div>
+        </div>
+
+        <div class="row span9 form-actions control-group">
+          <label class="control-label">With selected:</label>
+          <button type="submit" id="pull" class="btn" rel="tooltip" data-original-title="Pull all languages, including source"><i class="icon-download"></i> Pull translations</button>
+          <button type="submit" id="push" class="btn btn-danger" rel="tooltip" data-original-title="Push all languages except source"><i class="icon-upload icon-white"></i> Push source</button> 
+  </div>
+
+      <div class="row span12">
+      <hr>
+      <footer >
+        <p>&copy; <a href="https://www.transifex.com/">Transifex</a> 2012 • <a href="http://help.transifex.com/features/client/">Transifex Client</a> v{{ txc_version }}</p>
+      </footer>
+      </div>
+    </div>
+
+    </div><!--/container-->
+
+
+    <!-- Le javascript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="{{ url_for('static', filename='js/jquery.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-transition.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-alert.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-dropdown.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-scrollspy.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-tab.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-tooltip.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-popover.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-button.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-collapse.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-carousel.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-typeahead.js') }}"></script>
+
+    <script src="{{ url_for('static', filename='js/jquery.jeditable.js') }}"></script>
+
+    <script src="{{ url_for('static', filename='js/txclient.js') }}"></script>
+    <script type="text/javascript">
+      $(document).ready(function(){
+        $('.pull-action').tooltip()
+        $('.push-action').tooltip()
+        /* All checkboxes enabled by default */
+        $('.rowcheckbox').prop("checked", false);
+      });
+    </script>
+
+  </body>
+</html>

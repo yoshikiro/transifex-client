@@ -1,0 +1,115 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en">
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<title>Transifex Client</title>	
+
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.6.1/jquery.js"></script>
+    <script>window.jQuery || document.write('<script src="{{ url_for('static', filename='jquery.js') }}">\x3C/script>')</script>
+    <script type=text/javascript>
+      $SCRIPT_ROOT = {{ request.script_root|tojson|safe }};
+    </script>
+
+	<link rel="stylesheet" href="{{ url_for('static', filename='txncss2.css') }}" type="text/css" media="screen" />
+	
+	<link media="screen" href="https://sw.transifex.net/14/static/css/home.css" type="text/css" rel="stylesheet" />
+
+
+    <script type="text/javascript">
+	  var _gaq = _gaq || [];
+	  _gaq.push(['_setAccount', 'UA-21799942-9']);
+	  _gaq.push(['_setDomainName', 'localhost']);
+	  _gaq.push(['_trackPageview']);
+	  (function() {
+	    var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	    ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	    var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+	  })();
+    </script>
+    {% block extrahead %}{% endblock %}
+</head>
+
+<body>
+<div id="global-container">
+    <div id="global-content-wrapper">
+			<div id="global-header-container">
+        <div id="global-header">
+        	<div class="wrapper" >
+        		<a id="transifex-logo" class="grid_3 omega" href="/start/" title="Go to start page">
+        			<img src="https://sw.transifex.net/14/static/images/tx-logo-whiteorange.png" alt="Transifex logo" width="116" height="32"/>
+        			<img src="https://sw.transifex.net/14/static/images/beta-tag.png" alt="Beta" width="20" height="8" id="beta-tag" />
+        		</a>
+        		<ul id="global-nav" class="grid_10 alpha">
+				    <li><h6><a href="/connect/people/" title="Explore our community" class="smooth-transition ">CONNECT</a></h6></li>
+        			<li><h6><a href="https://www.transifex.net/" title="The Transifex service" class= "smooth-transition ">TRANSIFEX</a></h6></li>
+        			<li><h6><a href="/" title="Transifex Home" class="smooth-transition active">CLIENT HOME</a></h6></li>
+        		</ul>
+        			
+        			
+        			
+        		        		        		
+        	</div>
+        </div>
+		</div>
+
+{% block wrapper %}
+
+  <div id="notification-container">
+    <div class="i16 waiting" onClick="$('#notification-container').slideUp()"></div>
+  </div>
+  
+	{% block messages %}
+	  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+	    <div class="messages">
+	    {% for message in messages %}
+		    <div class="message{% if message.tags %}_{{ message.tags }}{% endif %}"><p class="i16 imessage{% if message.tags %}_{{ message.tags }}{% endif %}">{{ message }}</p></div> 
+	    {% endfor %}
+	    </div>
+    {% endif %}
+    {% endwith %}
+  {% endblock %}
+	
+	<div id="header_area" class="tabbed-header">
+	    <div class="wrapper clearfix">
+	    {% block content_header %}
+	    	<div id="content_title" class="grid_13" >{% block content_title %}{% endblock %}</div>
+	    	<div id="content_header_sec" class="grid_3">{% block content_header_sec %}{% endblock %}</div>
+	    	<div id="header_menu" class="grid_16 clearfix">{% block header_menu%}{% endblock %} </div>
+	    {% endblock %}
+	    </div>
+    </div>
+
+<div class="wrapper clearfix">
+{% block content %}
+	<div id="content_main" class="grid_16">{% block content_main %}{% endblock %}</div>
+{% endblock %}
+
+</div>
+{% endblock wrapper %}
+
+
+</div>
+</div>
+	
+
+	</div>
+
+
+	</div>
+	
+	<div id="footer-sub">
+		<div class="wrapper clearfix">
+			<div class="grid_12" style="padding:2px 0px 1px 0;">
+				&copy; 2012 <a href="http://www.transifex.com/" title="Transifex. Social localization.">Transifex</a>. All rights reserved
+                &nbsp;&bull;&nbsp;<a href="http://www.transifex.net/about/privacy/" title="Privacy Policy">Privacy policy</a>
+                &nbsp;&bull;&nbsp;<a href="http://www.transifex.net/about/terms/" title="Terms of Service">Terms of use</a>
+         	</div>
+    	</div>
+	</div>
+</div>
+
+</body>
+</html>
+

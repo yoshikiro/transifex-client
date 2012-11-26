@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Statistics, transifex client interface</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="">
+    <meta name="author" content="">
+
+    <!-- Le styles -->
+    <link href="{{ url_for('static', filename='css/bootstrap.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/bootstrap-responsive.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/txclient.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/zaab.css') }}" rel="stylesheet">
+<script src="{{ url_for('static', filename='js/jquery.js') }}"></script>
+<style type="text/css">
+      span.lang { color: #383; background-color: #F0F7F0; }
+      .edit { padding: 2px 3px; border-bottom: 1px dotted transparent; }
+      .edit:hover { cursor: text; border-bottom: 1px dotted #bbb; }
+      .res-row:hover { background-color: #F5F5F5; }
+</style>
+
+<script type="text/javascript">
+      var SCRIPT_ROOT = {{ request.script_root|tojson|safe }};
+</script>
+<script>
+	//for the select unselect all
+	function toggle(source) {
+		checkboxes = document.getElementsByClassName('rowcheckbox');
+                for(var i in checkboxes)
+                	checkboxes[i].checked= source.checked;
+        }
+</script>
+<script>
+	
+	var languageArray = new Array();	//that var will keep all the languages that are checked
+	var lastReportTime = 0;			//we don't need that yet! It's for live stats support!
+	var resID = '{{ resource_name }}';	//Holds the project_name.resource_name
+
+	window.onload = init;
+	
+	function init(){
+		var resource_name = '{{ resource_name }}';
+		var projectAndResource = resource_name.split(".");
+		var projectName = projectAndResource[0];
+		var resourceName = projectAndResource[1];
+		if (projectName =="" || resourceName ==""){
+			alert ("an error occured data are empty!");
+		}else{
+			var url = "https://{{ username }}:{{ password }}@www.transifex.com/api/2/project/" + projectName + "/resource/" + resourceName + "/stats/" + "?callback=updateStats" + "&random=" + (new Date()).getTime();
+			handleStats(url);
+		}
+	}
+	
+	function handleStats(url){
+		//
+		//We are getting data using JSONP
+		//
+		var newScriptElement = document.createElement("script");
+		newScriptElement.setAttribute("src", url);
+		newScriptElement.setAttribute("id", "jsonp");
+		var oldScriptElement = document.getElementById("jsonp");
+		var head = document.getElementsByTagName("head")[0];
+		if (oldScriptElement == null) {
+			head.appendChild(newScriptElement);
+		}
+		else {
+			head.replaceChild(newScriptElement, oldScriptElement);
+		}	
+	}	
+	
+	function updateStats(stats) {
+		var salesDiv = document.getElementById("stats");
+		var newData = [];
+
+		for ( var s in stats )
+		{
+    			var data = stats[s];
+    			data.language = s;
+    			newData.push(data.language);
+    		}
+
+		//the sorting shit
+		//
+		newData.sort(function(a,b){
+		if (parseInt(stats[a].completed,10) < parseInt(stats[b].completed, 10))
+	              return -1;
+	      	if ( parseInt(stats[a].completed ,10) > parseInt(stats[b].completed,10))
+	              return 1;
+	      	return 0;
+		});
+
+	
+		//getting stat data on the screen dynamicly
+		for (var i = 0; i < newData.length; i++) {
+			var glossa = newData[i];
+			var stat = stats[glossa];
+		
+			//that div will hold every element on every row
+			//
+			var div = document.createElement("div");
+			div.setAttribute("class","row span10 res-row");
+		
+			var okbutton = document.createElement("span");
+			okbutton.setAttribute("class","label label-default");
+			okbutton.setAttribute("id", "zaab_" + glossa);
+			okbutton.innerHTML = ("OK");	
+			//the progress bar
+			//
+			var progressbar = document.createElement("div");
+			progressbar.setAttribute("id", "progressbar");
+			var indicator = document.createElement("div");
+			indicator.setAttribute("id","indicator");
+			progressbar.appendChild(indicator);
+			//holds the language name
+			//
+			var language = document.createElement("p");
+			language.setAttribute("class","zaab");
+			language.style.padding = "5px";
+			language.style.position = "relative";
+			language.style.left = "10px";
+			language.style.width = "250px";
+			language.style.display = "inline-block";
+			language.innerHTML = glossa + " :  " + stat.completed + " : " + stat.last_update;
+			//the checkbox for the coresponding actions
+			//
+			var checkbox = document.createElement('input');
+			checkbox.setAttribute("class", "rowcheckbox");
+			checkbox.type = "checkbox";
+			checkbox.name = "name";
+			checkbox.value = "value";
+			checkbox.id = glossa;
+			checkbox.style.float = "left";
+			checkbox.style.top = "5px";
+			checkbox.style.position = "relative";
+			checkbox.style.display = "inline-block";
+			
+			var span3 = document.createElement("div");
+			span3.setAttribute("class","span3 tdbox");
+
+			var span5 = document.createElement("div");
+			span5.setAttribute("class","span5 tdbox");
+			
+			var span1 = document.createElement("div");
+			span1.setAttribute("class","span1 tdbox");
+
+			languageArray[i]=glossa;
+			span3.appendChild(checkbox);
+			span3.appendChild(language);	
+			span5.appendChild(progressbar);		
+			
+			span1.appendChild(okbutton);
+			div.appendChild(span3);
+			div.appendChild(span5);
+			div.appendChild(span1);
+			//width from stats indicator is dynamic depending the percentage of the translation
+			//
+			indicator.style.width = stat.completed;
+
+			if (salesDiv.childElementCount == 0) {
+				salesDiv.appendChild(div);
+			}
+			else {
+				salesDiv.insertBefore(div, salesDiv.firstChild);
+			}
+		}
+		//We need that to suport live stats refresh in the future!
+		//
+		if (stats.length > 0) {
+			lastReportTime = stats[stats.length-1].time;
+		}
+}
+
+$(document).ready(function() {
+	$('#pullResource').click(function(){
+	
+	var flag=false;
+	var languagesTemp = new Array();
+
+	for (var k=0; k<languageArray.length; k++)
+	{
+		//we merge all the languages in onse string and at the end we also have the resource name
+		var checkBox = document.getElementById(languageArray[k]);
+		var languaheLink;
+		if(checkBox.checked){
+			if(flag){
+				languaheLink = languaheLink + "*//" + languageArray[k];
+			}else{
+				languaheLink = languageArray[k];
+				flag=true;
+			}
+		languagesTemp.push(languageArray[k]);	
+		}
+	}
+	
+	var superurl = languaheLink + "*//" + resID;
+		$.ajax({
+		type: "POST",
+		url: "http://localhost:5000/tx/_pullResource",
+		data: {
+			"resourceLanguages": superurl
+		},
+		beforeSend: function(){
+			for(var d=0;d<languagesTemp.length;d++){
+				var temp = document.getElementById("zaab_" + languagesTemp[d]);
+				temp.innerHTML = "PENDING...";
+				temp.setAttribute("class","label label-warning");	
+			}  
+      		},
+		success: function(data){
+			if(data=="success"){
+				for(var d=0;d<languagesTemp.length;d++){
+					var temp = document.getElementById("zaab_" + languagesTemp[d]);
+					temp.innerHTML = "OK";
+					temp.setAttribute("class","label label-success");
+				}
+			}else if(data=="failed"){
+				for(var d=0;d<languagesTemp.length;d++){
+					var temp = document.getElementById("zaab_" + languagesTemp[d]);
+					temp.innerHTML = "FAILED";
+					temp.setAttribute("class","label label-important");
+				}
+			}
+
+					
+	}
+ });
+
+});
+	$('#pushResource').click(function(){
+
+		var flag=false;
+		var languagesTemp = new Array();	//temporary array holds the languages that are checked.
+
+		for (var l=0; l<languageArray.length; l++){
+			//we merge all the ckecked languages on one string split by *// and at the end place the resource name
+			var checkBox = document.getElementById(languageArray[l]);
+			var languaheLink;
+			if(checkBox.checked){
+				if(flag){
+					languaheLink =languaheLink + "*//" + languageArray[l];
+				}else{
+					languaheLink = languageArray[l];
+					flag = true;
+				}
+			languagesTemp.push(languageArray[l]);
+			}
+		}
+		var superurl = languaheLink + "*//" + resID;
+		$.ajax({
+			type: "POST",
+			url: "http://localhost:5000/tx/_pushResource",
+			data: {
+				"locales" : superurl
+			},
+			beforeSend: function(){
+				for(var d=0;d<languagesTemp.length;d++){
+					var temp = document.getElementById("zaab_" + languagesTemp[d]);
+					temp.innerHTML = "PENDING...";
+					temp.setAttribute("class","label label-warning");	
+				}  
+      			},
+			success: function(data){
+				if(data=="success"){
+					for(var d=0;d<languagesTemp.length;d++){
+						var temp = document.getElementById("zaab_" + languagesTemp[d]);
+						temp.innerHTML = "OK";
+						temp.setAttribute("class","label label-success");
+					}
+				}else if(data=="failed"){
+					for(var d=0;d<languagesTemp.length;d++){
+						var temp = document.getElementById("zaab_" + languagesTemp[d]);
+						temp.innerHTML = "FAILED";
+						temp.setAttribute("class","label label-important");
+					}
+				}
+		
+			}
+		});
+	});
+});
+
+</script>
+
+</head>
+
+  <body>
+
+    <!-- header -->
+    <div class="navbar">
+      <div class="navbar-inner">
+        <div class="container">
+          <a class="btn btn-navbar" data-toggle="collapse" data-target=".nav-collapse">
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </a>
+          <a class="brand" href="https://www.transifex.com/"><img src="{{ url_for('static', filename='img/tx-logo-whiteorange.png') }}" /></a>
+          <div class="btn-group pull-right">
+            <a class="btn dropdown-toggle" data-toggle="dropdown" href="#">
+              <i class="icon-user"></i> {{ username }}
+              <span class="caret"></span>
+            </a>
+            <ul class="dropdown-menu">
+              <li><a href="https://www.transifex.com/home/">Dashboard on Transifex</a></li>
+            </ul>
+          </div>
+          <div class="nav-collapse">
+            <ul class="nav">
+              <li class="active"><a href="#">Client</a></li>
+            </ul>
+          </div><!--/.nav-collapse -->
+        </div>
+      </div>
+    </div>
+
+    <div class="container show-grid reslist" id="stats">
+ 	  
+	    <!-- placemark for the stats --> 
+
+        <div class="row span10" id="tr_th" style="background-color: #F9F9F9">
+		<div class="span3 tdbox">
+			<button type="submit" class="btn" onClick=" location.href='http://localhost:5000/tx/home'" ><i class="icon-arrow-left"></i> Back</button>
+			<br></br>
+		  	<label class="checkbox"><input type="checkbox" onClick="toggle(this)" id="optionsCheckbox" value="option1"> Select all</label>
+	  </div>
+        </div>
+
+        <div class="row span9 form-actions control-group">
+          <label class="control-label">With selected:</label>
+          <button type="submit" id="pullResource" class="btn" rel="tooltip" data-original-title="Pull all languages, including source"><i class="icon-download"></i> Pull translations</button>
+          <button type="submit" id="pushResource" class="btn btn-danger" rel="tooltip" data-original-title="Push all languages except source"><i class="icon-upload icon-white"></i> Push source</button> 
+  </div>
+
+      <div class="row span12">
+      <hr>
+      <footer >
+        <p>&copy; <a href="https://www.transifex.com/">Transifex</a> 2012 • <a href="http://help.transifex.com/features/client/">Transifex Client</a> v{{ txc_version }}</p>
+      </footer>
+      </div>
+    </div>
+
+    </div><!--/container-->
+
+
+    <!-- Le javascript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="{{ url_for('static', filename='js/bootstrap-transition.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-alert.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-dropdown.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-scrollspy.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-tab.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-tooltip.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-popover.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-button.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-collapse.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-carousel.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/bootstrap-typeahead.js') }}"></script>
+
+    <script src="{{ url_for('static', filename='js/jquery.jeditable.js') }}"></script>
+
+   <!-- <script src="{{ url_for('static', filename='js/resource.js') }}"></script>
+   -->
+   <script type="text/javascript">
+      $(document).ready(function(){
+        $('.pull-action').tooltip()
+        $('.push-action').tooltip()
+        /* All checkboxes enabled by default */
+        $('.rowcheckbox').prop("checked", false);
+      });
+    </script>
+
+  </body>
+</html>

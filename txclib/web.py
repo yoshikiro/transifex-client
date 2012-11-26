@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 import urllib2
 import itertools, mimetools, mimetypes
-import platform
-from txclib import get_version
 
 # Helper class to enable urllib2 to handle PUT/DELETE requests as well
 class RequestWithMethod(urllib2.Request):
@@ -58,7 +56,7 @@ class MultipartPostHandler(urllib2.BaseHandler):
                 request.add_unredirected_header('Content-Type', contenttype)
 
             request.add_data(data)
-
+        
         return request
 
     def multipart_encode(vars, files, boundary = None, buf = None):
@@ -87,8 +85,3 @@ class MultipartPostHandler(urllib2.BaseHandler):
 
     https_request = http_request
 
-
-def user_agent_identifier():
-    """Return the user agent for the client."""
-    client_info = (get_version(), platform.system(), platform.machine())
-    return "txclient/%s (%s %s)" % client_info

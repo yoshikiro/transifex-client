@@ -1,0 +1,24 @@
+/* zaab */
+
+#indicator {
+  background :#80B66A;
+  width: 300px;
+  height: 10px;
+  border:1px solid silver;
+  max-width: 340px; 
+ 
+}
+
+#progressbar{
+    height:11px;
+    width:400px;
+    display:inline-block;
+	  
+ }
+
+ #timestamp{
+
+	 width:200px;
+	 display:inline-block;
+ 
+}

@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+{% block title %}Transifex Client start page{% endblock %}
+
+{% block extrahead %}
+  <script src="{{ url_for('static', filename='js/jquery.jeditable.js') }}"></script>
+	<style type="text/css">
+	  table.ress tr td.r_name { width: 13em; }
+	  table.ress tr td.r_name > span.wr { padding-left: 1em; }
+	  table.ress tr.sep th { text-transform: uppercase; font-weight: bold; padding-top: 0.5em; padding-left: 0.5em; border-bottom: 1px solid #eee; }
+	  table.ress td.actions { text-align: right; padding: 0 1em; }
+	  table.ress td.actions.span { visible: none; }
+	  table.ress dl { margin: 0; }
+	  table.ress dl dt { float: left; width: 5em; }
+	  table.ress dl dd { font-family: 'Courier new'; font-size: 90%; }
+	  span.lang { color: #383; background-color: #F0F7F0; }
+	  
+	  table.ress span.i16 { line-height: 20px; }
+	  .i16.loading { background-image: url('{{ url_for('static', filename='img/ajax-loader.gif') }}'); color: #777; }
+	  span.action_ok { color: green; }
+	  .result.ajax_error { color: #D73D29; background-color: #F4E3E1; padding: 0 0.3em; }
+	  table.ress td input { vertical-align: middle; padding-right: 1em; }
+	  table.ress tr.highlight { background-color: #fffff0 !important; }
+	  table.ress tr:hover { background-color: #fffff0 !important; }
+	  table.ress tr:hover .edit { border-bottom: 1px dotted #ccc; }
+	  p.tableactions { margin-top: 1em; background-color: #f5f5f5; border-bottom: 2px solid #ddd; border-top: 1px solid #ddd; padding: 0.5em 1em; }
+	  
+	  .edit form input { width: 150px; }
+	</style>
+
+<script type="text/javascript">
+
+var SCRIPT_ROOT = {{ request.script_root|tojson|safe }};
+var ACTIONS={
+  push:{
+    url: '/_push',
+    text: 'Pushed'
+  },
+  pull:{
+    url: '/_pull',
+    text: 'Pulled'
+  },
+  rename:{
+    url: '/_rename',
+    text: 'Renamed'
+  },
+  modify_expr:{
+    url: '/_modify_expr',
+    text: 'Modified'
+  }
+}
+
+$(function() {
+
+  /* Only show action links when we hover on the row */
+  $('.actions a, .links a').hide();
+  $('tr').hover(function() {
+      $(this).find('.actions a, .links a').addClass("selected").show();
+  }, function() {
+      $(this).find('.actions a, .links a').removeClass("selected").hide();
+  });
+
+  /* AJAX for pull */
+  $('.actions a').click(function(ev){
+    var $this = $(this);
+    var action = $(this).attr('data-action');
+    $.ajax({
+      url: SCRIPT_ROOT + ACTIONS[action].url,
+      data: {
+        resource: $this.attr('data-id')
+      },
+      beforeSend: function(){
+        $this.hide();
+        var $status = $this.next();
+        $status.text("Working");
+        $status.addClass("i16 loading");
+        $status.show();  
+      },
+      success: function(data) {
+        var $status = $this.next();
+        $status.removeClass("loading");
+        if (data.result == "OK") {
+          $this.remove();
+          $status.text(ACTIONS[action].text);
+          $status.removeClass("i16 loading");
+          $status.addClass('action_ok');
+          $status.show();
+        }
+      },
+      error: function(request, options, error) {
+        var $status = $this.next();
+        $this.remove();
+        $status.removeClass("i16 loading");
+        $status.addClass("ajax_error");
+        $status.text("Error");
+        $status.attr('title', request.status + ': ' + error);
+      }
+    });
+    ev.preventDefault();
+  });
+
+  /* Highlight rows */
+  $("input.rowcheckbox").click(function() { 
+    $(this).parent().parent().toggleClass('highlight');
+  });
+
+  /* AJAX: Modify resource */
+  $('.resname.edit').editable(ACTIONS["rename"].url, {
+    id: 'elementid',
+    style: 'display: inline',
+    tooltip: 'Click to edit...',
+    callback: function(value, settings) {
+      /* Refresh the whole row with new resource IDs */
+      location.reload();
+    }
+  }, {  });
+
+  /* AJAX: Modify resource expression */
+  $('.resexpr.edit').editable(function(value, settings) {
+    var $this = $(this);
+
+    $.ajax({
+      type : "POST",
+      cache : false,
+      url: ACTIONS["modify_expr"].url,
+      dataType: 'json',
+      data: { 'res_id': $this.attr('data-id'),
+              'value': value },
+      success: function(data) {
+        location.reload();
+      }
+    }); /* /ajax */
+
+    return value.replace('<lang>', '<span class="lang">&lt;lang&gt;</span>');
+  }, {
+    style: 'display: inline',
+    tooltip: 'Click to edit...',
+    data: function(value, settings) {
+      return value.replace('<span class="lang">&lt;lang&gt;</span>', '<lang>');
+    },
+  });
+  
+  
+  var $table = $('table.ress');
+
+  $('#addnew').click(function() {
+    var $newRow = $('table.ress tbody:last');
+    $newRow.after($newRow);
+  });
+  
+});
+
+</script>
+
+{% endblock %}
+
+
+{% block content_title %}
+  <h2 class="pagetitle">
+    Transifex Client home
+  </h2>
+{% endblock %}
+
+
+{% block content_main %}
+
+<div class="separate-header clearfix">
+<h3 class="sh-label">Resource mapping</h3>
+</div>
+
+<table class="ress" width="100%">
+<thead>
+  <tr>
+  <th width="25%;"></th>
+  <th width="60%;"></th>
+  <th width="15%;"></th>
+  </tr>
+</thead>
+<tbody>
+{% for res in res_list %}
+  <tr id="tr_{{ res.id }}" class="res">
+    <td class="r_name">
+      <span class="wr">
+        <span data-action='rename' class="resname edit" id="{{ res.id }}">{{ res.id }}</span>
+        <span class="links" style="margin-left: 0.5em;">
+          <a href="{{ res.r_url }}" target="_blank"><img src="{{ url_for('static', filename='img/icon-ext-link.png') }}" alt="Visit page" title="Resource on Transifex" /></a>
+        </span>
+      </span>
+    </td>
+    <td>
+      <dl>
+        <dd><span class="edit resexpr" data-id="{{ res.id }}">{{ res.expr_highlight|safe }}</span></dd>
+      </dl>
+    </td>
+    <td class="actions">
+      <a href="#" data-action='pull' data-id="{{ res.id }}" title="Pull all languages (including source)">Pull</a>
+      <span class="result" style="display: none;"></span>
+      <a href="#" data-action='push' data-id="{{ res.id }}" title="Push all languages except source">Push</a>
+      <span class="result" style="display: none;"></span>
+    </td>
+  </tr>
+{% endfor %}
+</tbody>
+</table>
+
+<span id="addnew">Add new</span>
+
+
+
+<p style="margin-top: 5em; border-top: 2px dotted #ccc; padding-top: 0.5em;">Running <a href="http://help.transifex.net/features/client/">Transifex Client</a> v{{ txc_version }}</p>
+{% endblock %}

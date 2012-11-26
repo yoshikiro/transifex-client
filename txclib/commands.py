@@ -15,9 +15,7 @@ adding code to this file you must take care of the following:
  * All functions should use the OptionParser and should have a usage and
    descripition field.
 """
-import os
-import re, shutil
-import sys
+import os, re, shutil, sys, unicodedata
 from optparse import OptionParser, OptionGroup
 import ConfigParser
 
@@ -29,6 +27,18 @@ from txclib.exceptions import UnInitializedError
 from txclib.parsers import delete_parser, help_parser, parse_csv_option, \
         status_parser, pull_parser, set_parser, push_parser, init_parser
 from txclib.log import logger
+
+
+DEFAULT_FORMATS = {
+    '.properties': 'PROPERTIES',
+    '.xml': 'ANDROID',
+    '.desktop': 'DESKTOP',
+    '.dtd': 'DTD',
+    '.strings': 'STRINGS',
+    '.po': 'PO',
+    '.pot': 'PO',
+    
+}
 
 
 def cmd_init(argv, path_to_tx):
@@ -63,7 +73,7 @@ def cmd_init(argv, path_to_tx):
     txrc = os.path.join(home, ".transifexrc")
     config = OrderedRawConfigParser()
 
-    default_transifex = "https://www.transifex.com"
+    default_transifex = "https://www.transifex.net"
     transifex_host = options.host or raw_input("Transifex instance [%s]: " % default_transifex)
 
     if not transifex_host:
@@ -526,6 +536,161 @@ def cmd_delete(argv, path_to_tx):
     logger.info("Done.")
 
 
+def cmd_wui(argv, path_to_tx):
+    """Run a web ui."""
+    from flask import Flask, flash, jsonify, render_template, request
+    import webbrowser
+    app = Flask(__name__)
+    app.secret_key = 'blahdiblah'
+
+    @app.route('/tx/home/')
+    def home(name=None):
+        "Print status of current project"
+        from txclib import get_version
+        txc_version = get_version()
+
+        prj = project.Project(path_to_tx)
+
+        # Let's create a resource list from our config file
+        res_list = []
+        prev_proj = ''
+        for idx, res in enumerate(prj.get_resource_list()):
+            hostname = prj.get_resource_host(res)
+            p, r = res.split('.')
+            p_url = '%s/projects/p/%s' % (hostname, p)
+            r_url = '%s/resource/%s' % (p_url, r)
+            sfile = prj.get_resource_option(res, 'source_file') or "N/A"
+            expr = prj.config.get(res, "file_filter")
+            expr_highlight = expr.replace('<lang>', '<span class="lang">&lt;lang&gt;</span>')
+            res_list.append({'id': res,
+                             'p_name': p,
+                             'p_url': p_url,
+                             'r_name': r,
+                             'r_url': r_url,
+                             'source_file': sfile,
+                             'expr': expr,
+                             'expr_highlight': expr_highlight})
+        res_list = sorted(res_list, key=lambda k: k['id'])
+        username, password = prj.getset_host_credentials(hostname)
+        return render_template('index.html', res_list=res_list, txc_version=txc_version, username=username, password=password)
+
+
+    @app.route('/tx/_pull', methods=['GET', 'POST'])
+    def pull():
+	#pull all selected resources
+	#resources are all in one string and we split them by *//
+	resourceLink = request.form["resources"]
+	resources = resourceLink.split("*//")
+	prj = project.Project(path_to_tx)
+	prj.pull(resources=resources, fetchall=True, skip=True )
+	return jsonify(result="OK")
+
+    @app.route('/tx/_pullResource', methods=['GET', 'POST'])
+    def pullResource():
+	#pull for particular resource and particular languages of that resource
+	#languages are in one string and we split them by *// also at the end of that string we have the resource name
+	resourceLanguages = request.form["resourceLanguages"]
+	languages = resourceLanguages.split("*//")
+	resource = languages[-1]
+	logger.info("shit")
+	languages.pop()
+
+	prj = project.Project(path_to_tx)
+	try:
+		prj.pull(resources=[resource], fetchall=True, skip=True, languages=languages)
+		return "success"
+	except:
+		return "failed"
+
+	
+
+    @app.route('/tx/_pushResource', methods=['GET', 'POST'])
+    def pushResource():
+	#push for particular reource and particular languages of that resource 
+	#languges are in one string and we split them by *// also at the end of tha string we have the resource name	
+	locale = request.form["locales"]
+	prj = project.Project(path_to_tx)
+	
+	locales = locale.split("*//")
+	resource = locales[-1]
+	locales.pop()
+
+	try:
+		prj.push(resources=[resource], source=True)
+		prj.push(resources=[resource], skip=True, translations=True, source=False, languages=locales)
+		return "success"
+	except:
+		return "failed"
+
+
+    @app.route('/tx/resource/<resouce_data>')
+    def resource(resouce_data):
+	from txclib import get_version
+	txc_version = get_version()
+	data = resouce_data.split("***")
+	resource_name = data[0]
+	username = data[1]
+	password = data[2]
+
+	return render_template('resource.html', txc_version=txc_version, username=username, password=password, resource_name=resource_name)
+
+
+    @app.route('/tx/_push', methods=['GET', 'POST'])
+    def push():
+	#push all selected resources
+	#resource names are in one string and split them with *// 
+	resourceLink = request.form["resources"]
+	resources = resourceLink.split("*//")
+        
+	prj = project.Project(path_to_tx)
+        try:
+		prj.push(resources=resources, source=True)
+		prj.push(resources=resources, skip=True, translations=True, source=False)
+        	return "success"
+	except:
+		return "failed"
+
+    @app.route('/_rename', methods=['POST'])
+    def rename():
+        """Rename a resource."""
+        prj = project.Project(path_to_tx)
+        res_old = request.form['elementid']
+        res_new = request.form['value']
+        
+        # Raise error with invalid resource ID
+        if res_new.count('.') != 1:
+            error_msg = u"New resource ID should have one dot in it."
+            flash(error_msg, 'error')
+            logger.warning(error_msg)
+            return(res_old)
+
+        # Avoid deleting the same resource if unchanged:
+        if res_new == res_old:
+            return(res_old)
+
+        logger.info("Renaming %s to %s" % (res_old, res_new))
+        prj.config._sections[res_new] = prj.config._sections[res_old]
+        prj.config._sections.pop(res_old)
+        prj.save()
+        return res_new
+
+
+    @app.route('/_modify_expr', methods=['POST'])
+    def modify_expr():
+        """Modify the file filter of a resource."""
+        prj = project.Project(path_to_tx)
+        res_id = request.form['res_id']
+        expr = request.form['value']
+        logger.info("Changing expression of %s to %s" % (res_id, expr))
+        prj.config.set("%s" % res_id, "file_filter", expr)
+        prj.save()
+        return expr
+
+    logger.info("Running web UI. Please navigate to http://localhost:5000/")
+    webbrowser.open("http://localhost:5000/tx/home", new=0)
+    app.run(debug=True)
+
+
 def _go_to_dir(path):
     """Change the current working directory to the directory specified as
     argument.
@@ -557,7 +722,7 @@ def _set_mode(resource, value, path_to_tx):
 
 def _set_type(resource, value, path_to_tx):
     """Set the i18n type in the .tx/config file."""
-    args = (resource, 'type', value, path_to_tx, 'set_i18n_type')
+    args = (resource, 'type', value, path_to_tx, 'set_i19n_type')
     _set_project_option(*args)
 
 
