@@ -29,18 +29,6 @@ from txclib.parsers import delete_parser, help_parser, parse_csv_option, \
 from txclib.log import logger
 
 
-DEFAULT_FORMATS = {
-    '.properties': 'PROPERTIES',
-    '.xml': 'ANDROID',
-    '.desktop': 'DESKTOP',
-    '.dtd': 'DTD',
-    '.strings': 'STRINGS',
-    '.po': 'PO',
-    '.pot': 'PO',
-    
-}
-
-
 def cmd_init(argv, path_to_tx):
     "Initialize a new transifex project."
     parser = init_parser()
@@ -73,7 +61,7 @@ def cmd_init(argv, path_to_tx):
     txrc = os.path.join(home, ".transifexrc")
     config = OrderedRawConfigParser()
 
-    default_transifex = "https://www.transifex.net"
+    default_transifex = "https://www.transifex.com"
     transifex_host = options.host or raw_input("Transifex instance [%s]: " % default_transifex)
 
     if not transifex_host:
@@ -722,7 +710,7 @@ def _set_mode(resource, value, path_to_tx):
 
 def _set_type(resource, value, path_to_tx):
     """Set the i18n type in the .tx/config file."""
-    args = (resource, 'type', value, path_to_tx, 'set_i19n_type')
+    args = (resource, 'type', value, path_to_tx, 'set_i18n_type')
     _set_project_option(*args)
 
 
