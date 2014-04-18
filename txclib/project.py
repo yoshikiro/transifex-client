@@ -39,6 +39,7 @@ class Project(object):
         """Initialize the Project attributes."""
         if init:
             self._init(path_to_tx)
+        self.connection_info_by_host = {}
 
     def _init(self, path_to_tx=None):
         instructions = "Run 'tx init' to initialize your project first!"
@@ -58,13 +59,13 @@ class Project(object):
             raise
         host = self.config.get('main', 'host')
         if host.lower().startswith('https://'):
-            self.conn = urllib3.connection_from_url(
+            urllib3.connection_from_url(
                 host,
                 cert_reqs=ssl.CERT_REQUIRED,
                 ca_certs=web.certs_file()
             )
         else:
-            self.conn = urllib3.connection_from_url(host)
+            urllib3.connection_from_url(host)
 
     def _get_config_file_path(self, root_path):
         """Check the .tx/config file exists."""
@@ -559,12 +560,39 @@ class Project(object):
                     fd.write(r.encode(charset))
                     fd.close()
 
-    def push(self, source=False, translations=False, force=False,
+    def get_connection_info(self, host):
+        if host in self.connection_info_by_host:
+            return self.connection_info_by_host[host]
+        try:
+            info = create_connection_info(
+                self.txrc.get(host, 'username'),
+                self.txrc.get(host, 'password')
+            )
+        except configparser.NoSectionError:
+            raise Exception("No user credentials found for host %s. Edit"
+                " ~/.transifexrc and add the appropriate info in there." %
+                host)
+        self.connection_info_by_host[host] = info
+        return info
+
+    def push(self, source=False, translations=False,force=False,
              resources=[], languages=[], skip=False, no_interactive=False):
-        """Push all the resources"""
+        """
+        Push all the resources
+        """
         resource_list = self.get_chosen_resources(resources)
         self.skip = skip
         self.force = force
+        if force and not no_interactive:
+            answer = input(
+                "Warning: By using --force, the uploaded"
+                " files will overwrite remote translations, even if they"
+                " are newer than your uploaded files.\nAre you sure you"
+                " want to continue? [y/N] ")
+
+            if not answer in ["", 'Y', 'y', "yes", 'YES']:
+                return
+
         for resource in resource_list:
             push_languages = []
             project_slug, resource_slug = resource.split('.', 1)
@@ -810,23 +838,14 @@ class Project(object):
 
     def do_url_request(self, api_call, multipart=False, data=None,
                        files=[], method="GET", **kwargs):
-        """Issues a url request."""
+        """
+        Issues a url request.
+        """
         # Read the credentials from the config file (.transifexrc)
         host = self.url_info['host']
-        try:
-            username = self.txrc.get(host, 'username')
-            passwd = self.txrc.get(host, 'password')
-            token = self.txrc.get(host, 'token')
-            hostname = self.txrc.get(host, 'hostname')
-        except configparser.NoSectionError:
-            raise Exception(
-                "No user credentials found for host %s. Edit"
-                " ~/.transifexrc and add the appropriate"
-                " info in there." % host
-            )
-
+        connection_info = self.get_connection_info(host)
         # Create the Url
-        kwargs['hostname'] = hostname
+        kwargs['hostname'] = host
         kwargs.update(self.url_info)
         url = API_URLS[api_call] % kwargs
 
@@ -840,8 +859,7 @@ class Project(object):
                     "language": info.split(';')[1],
                     "uploaded_file": (name, open(filename, 'rb').read())
                 }
-        return utils.make_request(method, hostname,
-                                  url, username, passwd, data)
+        return utils.make_request_with_connection_info(method, host, url, connection_info, data)
 
     def _should_update_translation(self, lang, stats, local_file, force=False,
                                    mode=None):
@@ -1073,7 +1091,6 @@ class Project(object):
         new to the local installation.
         """
         new_translations = []
-        timestamp = time.time()
         langs = list(stats.keys())
         logger.debug("Available languages are: %s" % langs)
 
@@ -1196,27 +1213,7 @@ class Project(object):
         Raises:
             URLError, in case of a problem.
         """
-        multipart = True
-        method = "POST"
-        api_call = 'create_resource'
-
-        host = self.url_info['host']
-        try:
-            username = self.txrc.get(host, 'username')
-            passwd = self.txrc.get(host, 'password')
-            token = self.txrc.get(host, 'token')
-            hostname = self.txrc.get(host, 'hostname')
-        except configparser.NoSectionError:
-            raise Exception("No user credentials found for host %s. Edit "
-                            "~/.transifexrc and add the appropriate "
-                            "info in there." % host)
-
-        # Create the Url
-        kwargs['hostname'] = hostname
-        kwargs.update(self.url_info)
-        kwargs['project'] = pslug
-        url = (API_URLS[api_call] % kwargs)
-
+        # Check if type is specified
         i18n_type = self._get_option(resource, 'type')
         if i18n_type is None:
             raise Exception(
@@ -1225,18 +1222,29 @@ class Project(object):
                 "More info: http://bit.ly/txcconfig"
             )
 
-        name = os.path.basename(filename)
+        # Read contents of file
+        with open(filename, 'rb') as f:
+            content = f.read()
+
+        # Retrieve connection info
+        host = self.url_info['host']
+        info = self.get_connection_info(host)
+
+        # Create the Url
+        kwargs.update(self.url_info)
+        kwargs['project'] = pslug
+        url = (API_URLS["create_resource"] % kwargs).encode('UTF-8')
+       
         data = {
             "slug": fileinfo.split(';')[0],
             "name": fileinfo.split(';')[0],
-            "uploaded_file": (name, open(filename, 'rb').read()),
+            "uploaded_file": (filename, content),
             "i18n_type": i18n_type
         }
 
-        r, charset = utils.make_request(
-            method, hostname, url, username, passwd, data
+        return utils.make_request_with_connection_info(
+            "POST", host, url, info, data
         )
-        return r
 
     def _get_option(self, resource, option):
         """Get the value for the option in the config file.
