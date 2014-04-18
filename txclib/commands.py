@@ -329,11 +329,15 @@ def cmd_push(argv, path_to_tx):
         parser.error("You need to specify at least one of the -s|--source,"
             " -t|--translations flags with the push command.")
 
+    if options.requests < 1 or options.requests > 2:
+        parser.error("Invalid number of concurrent requests.")
+
     prj.push(
         force=force_creation, resources=resources, languages=languages,
         skip=skip, source=options.push_source,
         translations=options.push_translations,
-        no_interactive=options.no_interactive
+        no_interactive=options.no_interactive,
+        requests=options.requests
     )
     logger.info("Done.")
 

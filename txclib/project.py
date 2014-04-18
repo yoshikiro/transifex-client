@@ -7,6 +7,7 @@ import fnmatch
 import datetime
 import time
 import ssl
+from threading import Thread
 
 try:
     import configparser
@@ -186,12 +187,12 @@ class Project(object):
 
         p_slug, r_slug = resource.split('.', 1)
         file_filter = file_filter.replace("<sep>", r"%s" % posix_sep)
-        self.url_info = {
+        url_info = {
             'host': host,
             'project': p_slug,
             'resource': r_slug
         }
-        extension = self._extension_for(i18n_type)[1:]
+        extension = self._extension_for(url_info, i18n_type)[1:]
 
         self.config.set(resource, 'source_lang', source_lang)
         self.config.set(
@@ -403,14 +404,14 @@ class Project(object):
             logger.debug("Language mapping is: %s" % lang_map)
             if mode is None:
                 mode = self._get_option(resource, 'mode')
-            self.url_info = {
+            url_info = {
                 'host': host,
                 'project': project_slug,
                 'resource': resource_slug
             }
-            logger.debug("URL data are: %s" % self.url_info)
+            logger.debug("URL data are: %s" % url_info)
 
-            stats = self._get_stats_for_resource()
+            stats = self._get_stats_for_resource(url_info)
 
             try:
                 file_filter = self.config.get(resource, 'file_filter')
@@ -431,7 +432,7 @@ class Project(object):
                         color_text(pseudo_file, "RED")
                     ))
                     self._download_pseudo(
-                        project_slug, resource_slug, pseudo_file
+                        url_info, project_slug, resource_slug, pseudo_file
                     )
                 if not languages:
                     continue
@@ -497,7 +498,7 @@ class Project(object):
                     " -> %s: %s" % (color_text(remote_lang, "RED"), local_file)
                 )
                 try:
-                    r = self.do_url_request(url, language=remote_lang)
+                    r = self.do_url_request(url_info, url, language=remote_lang)
                 except Exception as e:
                     if isinstance(e, SSLError) or not skip:
                         raise
@@ -546,12 +547,139 @@ class Project(object):
                         " -> %s: %s" % (color_text(remote_lang, "RED"), local_file)
                     )
 
-                    r = self.do_url_request(url, language=remote_lang)
+                    r = self.do_url_request(url_info, url, language=remote_lang)
                     base_dir = os.path.split(local_file)[0]
                     mkdir_p(base_dir)
                     fd = open(local_file, 'wb')
                     fd.write(r.encode("utf-8"))
                     fd.close()
+
+    def _push_resource(
+        self, resource, host, slang, project_slug, resource_slug,
+        sfile, files, lang_map, languages, source, translations, force, skip
+    ):
+        if source and sfile is None:
+            logger.error(
+                "You don't seem to have a proper source file"
+                " mapping for resource %s. Try without the --source"
+                " option or set a source file first and then try again." %
+                resource)
+            return
+
+        url_info = {
+            'host': host,
+            'project': project_slug,
+            'resource': resource_slug
+        }
+        stats = self._get_stats_for_resource(url_info)
+ 
+        if not source:
+            try:
+                self.do_url_request(url_info, 'resource_details')
+            except Exception as e:
+                if isinstance(e, SSLError):
+                    raise
+                if getattr(e, 'code', None) == 404:
+                    msg = "Resource %s doesn't exist on the server."
+                    logger.error(msg % resource)
+                    return
+
+        if source:
+            # Push source file
+            try:
+                logger.warning("Pushing source file (%s)" % sfile)
+                filename = self.get_full_path(sfile)
+                if not bool(stats):
+                    logger.info("Resource does not exist.  Creating...")
+                    fileinfo = "%s;%s" % (resource_slug, slang)
+                    self._create_resource(
+                        url_info, resource, project_slug, fileinfo, filename
+                    )
+                self.do_url_request(
+                    url_info, 'push_source', multipart=True, method="PUT",
+                    files=[("%s;%s" % (resource_slug, slang), filename)],
+                )
+            except Exception as e:
+                if isinstance(e, SSLError) or not skip:
+                    raise
+                else:
+                    logger.error(e)
+
+        if translations:
+            self._push_translations(
+                url_info, resource, resource_slug, stats,
+                files, lang_map, languages, force, skip)
+
+    def _push_translations(
+        self, url_info, resource, resource_slug, stats,
+        files, lang_map, languages, force, skip
+    ):
+        logger.info("Pushing translations for resource %s:" % resource)
+        push_languages = []
+        if not languages:
+            push_languages = list(files.keys())
+        else:
+            push_languages = []
+            f_langs = list(files.keys())
+            for l in languages:
+                if l in list(lang_map.keys()):
+                    l = lang_map[l]
+                push_languages.append(l)
+                if l not in f_langs:
+                    msg = "Warning: No mapping found for language code '%s'."
+                    logger.error(msg % color_text(l, "RED"))
+        logger.debug("Languages to push are %s" % push_languages)
+
+        # Push translation files one by one
+        for lang in push_languages:
+            local_lang = lang
+            if lang in list(lang_map.values()):
+                remote_lang = lang_map.flip[lang]
+            else:
+                remote_lang = lang
+
+            local_file = files[local_lang]
+
+            kwargs = {
+                'lang': remote_lang,
+                'stats': stats,
+                'local_file': local_file,
+                'force': force,
+            }
+            if not self._should_push_translation(**kwargs):
+                msg = "Skipping '%s' translation (file: %s)."
+                logger.info(msg % (color_text(lang, "RED"), local_file))
+                continue
+
+            msg = "Pushing '%s' translations (file: %s)"
+            logger.warning(msg % (color_text(remote_lang, "RED"), local_file))
+            try:
+                _files = [(
+                    "%s;%s" % (resource_slug, remote_lang),
+                    self.get_full_path(local_file)
+                )]
+                self.do_url_request(
+                    url_info, 'push_translation', multipart=True,
+                    method='PUT', files=_files, language=remote_lang
+                )
+                logger.debug("Translation %s pushed." % remote_lang)
+            except HttpNotFound:
+                logger.error("Resource %s hasn't been created." % resource)
+            except Exception as e:
+                if isinstance(e, SSLError) or not skip:
+                    raise
+                else:
+                    logger.error(e)
+
+    def _push_resources(self, args_list, requests):
+        for b in batch(args_list, requests):
+            threads = [
+                Thread(target=self._push_resource, args=args) for args in b
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
 
     def get_connection_info(self, host):
         if host in self.connection_info_by_host:
@@ -568,14 +696,14 @@ class Project(object):
         self.connection_info_by_host[host] = info
         return info
 
-    def push(self, source=False, translations=False, force=False, resources=[], languages=[],
-        skip=False, no_interactive=False):
+    def push(
+        self, source=False, translations=False, force=False, resources=[],
+        languages=[], skip=False, no_interactive=False, requests=1
+    ):
         """
         Push all the resources
         """
         resource_list = self.get_chosen_resources(resources)
-        self.skip = skip
-        self.force = force
         if force and not no_interactive:
             answer = input(
                 "Warning: By using --force, the uploaded"
@@ -586,8 +714,8 @@ class Project(object):
             if not answer in ["", 'Y', 'y', "yes", 'YES']:
                 return
 
+        args_list = []
         for resource in resource_list:
-            push_languages = []
             project_slug, resource_slug = resource.split('.', 1)
             files = self.get_resource_files(resource)
             slang = self.get_resource_option(resource, 'source_lang')
@@ -596,122 +724,12 @@ class Project(object):
             host = self.get_resource_host(resource)
             logger.debug("Language mapping is: %s" % lang_map)
             logger.debug("Using host %s" % host)
-            self.url_info = {
-                'host': host,
-                'project': project_slug,
-                'resource': resource_slug
-            }
-
-            logger.info("Pushing translations for resource %s:" % resource)
-
-            stats = self._get_stats_for_resource()
-
-            if force and not no_interactive:
-                answer = input("Warning: By using --force, the uploaded"
-                    " files will overwrite remote translations, even if they"
-                    " are newer than your uploaded files.\nAre you sure you"
-                    " want to continue? [y/N] ")
-
-                if not answer in ["", 'Y', 'y', "yes", 'YES']:
-                    return
-
-            if source:
-                if sfile is None:
-                    logger.error("You don't seem to have a proper source file"
-                        " mapping for resource %s. Try without the --source"
-                        " option or set a source file first and then try again." %
-                        resource)
-                    continue
-                # Push source file
-                try:
-                    logger.warning("Pushing source file (%s)" % sfile)
-                    if not self._resource_exists(stats):
-                        logger.info("Resource does not exist.  Creating...")
-                        fileinfo = "%s;%s" % (resource_slug, slang)
-                        filename = self.get_full_path(sfile)
-                        self._create_resource(resource, project_slug, fileinfo, filename)
-                    self.do_url_request(
-                        'push_source', multipart=True, method="PUT",
-                        files=[(
-                                "%s;%s" % (resource_slug, slang)
-                                , self.get_full_path(sfile)
-                        )],
-                    )
-                except Exception as e:
-                    if isinstance(e, SSLError) or not skip:
-                        raise
-                    else:
-                        logger.error(e)
-            else:
-                try:
-                    self.do_url_request('resource_details')
-                except Exception as e:
-                    if isinstance(e, SSLError):
-                        raise
-                    code = getattr(e, 'code', None)
-                    if code == 404:
-                        msg = "Resource %s doesn't exist on the server."
-                        logger.error(msg % resource)
-                        continue
-
-            if translations:
-                # Check if given language codes exist
-                if not languages:
-                    push_languages = list(files.keys())
-                else:
-                    push_languages = []
-                    f_langs = list(files.keys())
-                    for l in languages:
-                        if l in list(lang_map.keys()):
-                            l = lang_map[l]
-                        push_languages.append(l)
-                        if l not in f_langs:
-                            msg = "Warning: No mapping found for language code '%s'."
-                            logger.error(msg % color_text(l,"RED"))
-                logger.debug("Languages to push are %s" % push_languages)
-
-                # Push translation files one by one
-                for lang in push_languages:
-                    local_lang = lang
-                    if lang in list(lang_map.values()):
-                        remote_lang = lang_map.flip[lang]
-                    else:
-                        remote_lang = lang
-
-                    local_file = files[local_lang]
-
-                    kwargs = {
-                        'lang': remote_lang,
-                        'stats': stats,
-                        'local_file': local_file,
-                        'force': force,
-                    }
-                    if not self._should_push_translation(**kwargs):
-                        msg = "Skipping '%s' translation (file: %s)."
-                        logger.info(msg % (color_text(lang, "RED"), local_file))
-                        continue
-
-                    msg = "Pushing '%s' translations (file: %s)"
-                    logger.warning(
-                         msg % (color_text(remote_lang, "RED"), local_file)
-                    )
-                    try:
-                        self.do_url_request(
-                            'push_translation', multipart=True, method='PUT',
-                            files=[(
-                                    "%s;%s" % (resource_slug, remote_lang),
-                                    self.get_full_path(local_file)
-                            )], language=remote_lang
-                        )
-                        logger.debug("Translation %s pushed." % remote_lang)
-                    except HttpNotFound:
-                        if not source:
-                            logger.error("Resource hasn't been created. Try pushing source file.")
-                    except Exception as e:
-                        if isinstance(e, SSLError) or not skip:
-                            raise
-                        else:
-                            logger.error(e)
+            args = (
+                resource, host, slang, project_slug, resource_slug, sfile,
+                files, lang_map, languages, source, translations, force, skip
+            )
+            args_list.append(args)
+        self._push_resources(args_list, requests)
 
     def delete(self, resources=[], languages=[], skip=False, force=False):
         """Delete translations."""
@@ -727,20 +745,20 @@ class Project(object):
         for resource in resource_list:
             project_slug, resource_slug = resource.split('.', 1)
             host = self.get_resource_host(resource)
-            self.url_info = {
+            url_info = {
                 'host': host,
                 'project': project_slug,
                 'resource': resource_slug
             }
-            logger.debug("URL data are: %s" % self.url_info)
+            logger.debug("URL data are: %s" % url_info)
             project_details = parse_json(
-                self.do_url_request('project_details', project=self)
+                self.do_url_request(url_info, 'project_details', project=self)
             )
             teams = project_details['teams']
-            stats = self._get_stats_for_resource()
-            delete_func(project_details, resource, stats, languages)
+            stats = self._get_stats_for_resource(url_info)
+            delete_func(url_info, project_details, resource, stats, languages)
 
-    def _delete_resource(self, project_details, resource, stats, *args):
+    def _delete_resource(self, url_info, project_details, resource, stats, *args):
         """Delete a resource from Transifex."""
         project_slug, resource_slug = resource.split('.', 1)
         project_resource_slugs = [
@@ -766,7 +784,7 @@ class Project(object):
                     logger.info(msg % (resource, language))
                     return
         try:
-            self.do_url_request('delete_resource', method="DELETE")
+            self.do_url_request(url_info, 'delete_resource', method="DELETE")
             self.config.remove_section(resource)
             self.save()
             msg = "Deleted resource %s of project %s."
@@ -777,13 +795,13 @@ class Project(object):
             if isinstance(e, SSLError) or not self.skip:
                 raise
 
-    def _delete_translations(self, project_details, resource, stats, languages):
+    def _delete_translations(self, url_info, project_details, resource, stats, languages):
         """Delete the specified translations for the specified resource."""
         logger.info("Deleting translations from resource %s:" % resource)
         for language in languages:
-            self._delete_translation(project_details, resource, stats, language)
+            self._delete_translation(url_info, project_details, resource, stats, language)
 
-    def _delete_translation(self, project_details, resource, stats, language):
+    def _delete_translation(self, url_info, project_details, resource, stats, language):
         """Delete a specific translation from the specified resource."""
         project_slug, resource_slug = resource.split('.', 1)
         if language not in stats:
@@ -811,7 +829,8 @@ class Project(object):
                 return
         try:
             self.do_url_request(
-                'delete_translation', language=language, method="DELETE"
+                url_info, 'delete_translation',
+                language=language, method="DELETE"
             )
             msg = "Deleted language %s from resource %s of project %s."
             logger.info(msg % (language, resource_slug, project_slug))
@@ -821,17 +840,17 @@ class Project(object):
             if isinstance(e, SSLError) or not self.skip:
                 raise
 
-    def do_url_request(self, api_call, multipart=False, data=None,
+    def do_url_request(self, url_info, api_call, multipart=False, data=None,
                        files=[], method="GET", **kwargs):
         """
         Issues a url request.
         """
         # Read the credentials from the config file (.transifexrc)
-        host = self.url_info['host']
+        host = url_info['host']
         connection_info = self.get_connection_info(host)
         # Create the Url
         kwargs['hostname'] = host
-        kwargs.update(self.url_info)
+        kwargs.update(url_info)
         url = API_URLS[api_call] % kwargs
 
         if multipart:
@@ -1056,8 +1075,9 @@ class Project(object):
         except KeyError as e:
             return None
 
-    def _download_pseudo(self, project_slug, resource_slug, pseudo_file):
+    def _download_pseudo(self, url_info, project_slug, resource_slug, pseudo_file):
         response = self.do_url_request(
+            url_info,
             'pull_pseudo_file',
             resource_slug=resource_slug,
             project_slug=project_slug
@@ -1091,10 +1111,10 @@ class Project(object):
                 new_translations.append(lang)
         return set(new_translations)
 
-    def _get_stats_for_resource(self):
+    def _get_stats_for_resource(self, url_info):
         """Get the statistics information for a resource."""
         try:
-            r = self.do_url_request('resource_stats')
+            r = self.do_url_request(url_info, 'resource_stats')
             logger.debug("Statistics response is %s" % r)
             stats = parse_json(r)
         except HttpNotFound:
@@ -1166,10 +1186,10 @@ class Project(object):
                     pull_languages.append(l)
             return (set(pull_languages), set(new_translations))
 
-    def _extension_for(self, i18n_type):
+    def _extension_for(self, url_info, i18n_type):
         """Return the extension used for the specified type."""
         try:
-            res = parse_json(self.do_url_request('formats'))
+            res = parse_json(self.do_url_request(url_info, 'formats'))
             return res[i18n_type]['file-extensions'].split(',')[0]
         except Exception as e:
             logger.error(e)
@@ -1185,7 +1205,7 @@ class Project(object):
         """
         return bool(stats)
 
-    def _create_resource(self, resource, pslug, fileinfo, filename, **kwargs):
+    def _create_resource(self, url_info, resource, pslug, fileinfo, filename, **kwargs):
         """Create a resource.
 
         Args:
@@ -1209,11 +1229,11 @@ class Project(object):
             content = f.read()
 
         # Retrieve connection info
-        host = self.url_info['host']
+        host = url_info['host']
         info = self.get_connection_info(host)
 
         # Create the Url
-        kwargs.update(self.url_info)
+        kwargs.update(url_info)
         kwargs['project'] = pslug
         url = (API_URLS["create_resource"] % kwargs).encode('UTF-8')
        

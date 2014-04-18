@@ -149,6 +149,9 @@ def push_parser():
         default=False, help="Push the translation files to the server")
     parser.add_option("--no-interactive", action="store_true", dest="no_interactive",
         default=False, help="Don't require user input when forcing a push.")
+    parser.add_option("--requests", action="store", type="int",
+        dest="requests", default=1,
+        help="Specify how may concurrent requests to use.")
     return parser
 
 

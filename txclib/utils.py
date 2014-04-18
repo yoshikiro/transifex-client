@@ -32,6 +32,23 @@ class HttpNotFound(Exception):
     pass
 
 
+def batch(iterable, n=1):
+    """
+    Takes an iterable of elements and segments these elements
+    in lists of size at most n
+    """
+    if not isinstance(n, int) or n < 0:
+        raise Exception()
+    l = []
+    for item in iterable:
+        l.append(item)
+        if len(l) == n:
+            yield l
+            l = []
+    if len(l) > 0:
+        yield l
+
+
 def find_dot_tx(path=os.path.curdir, previous=None):
     """Return the path where .tx folder is found.
 
