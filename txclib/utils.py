@@ -33,6 +33,7 @@ if "http_proxy" in os.environ:
     proxy_url = os.environ["http_proxy"]
     managers["http"] = urllib3.ProxyManager(
         proxy_url=proxy_url,
+        proxy_headers={"User-Agent": user_agent_identifier()},
         num_pools=num_pools
     )
 else:
@@ -42,6 +43,7 @@ if "https_proxy" in os.environ:
     proxy_url = os.environ["https_proxy"]
     managers["https"] = urllib3.ProxyManager(
         proxy_url=proxy_url,
+        proxy_headers={"User-Agent": user_agent_identifier()},
         num_pools=num_pools,
         cert_reqs=ssl.CERT_REQUIRED,
         ca_certs=certs_file()
