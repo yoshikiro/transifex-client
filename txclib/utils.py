@@ -105,7 +105,10 @@ def make_request(method, host, url, username, password, fields=None):
         data = r.data
         charset = determine_charset(r)
         if isinstance(data, bytes):
-            data = data.decode(charset)
+            try:
+                data = data.decode(charset)
+            except UnicodeDecodeError:
+                data = data.decode("utf-8")
         if r.status < 200 or r.status >= 400:
             if r.status == 404:
                 raise HttpNotFound(data)
