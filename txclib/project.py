@@ -31,7 +31,7 @@ from txclib.exceptions import (
     TransifexrcConfigFileError
 )
 from txclib.urls import API_URLS
-from txclib.config import Flipdict, CERT_REQUIRED
+from txclib.config import Flipdict
 from txclib.log import logger
 from txclib.paths import posix_path, native_path, posix_sep
 from txclib.utils import ProjectNotInit
@@ -81,15 +81,6 @@ class Project(object):
         except ProjectNotInit as e:
             logger.error('\n'.join([six.u(str(e)), instructions]))
             raise
-        host = self.config.get('main', 'host')
-        if host.lower().startswith('https://'):
-            self.conn = urllib3.connection_from_url(
-                host,
-                cert_reqs=CERT_REQUIRED,
-                ca_certs=web.certs_file()
-            )
-        else:
-            self.conn = urllib3.connection_from_url(host)
 
     def validate_config(self):
         """To ensure the json structure is correctly formed."""
