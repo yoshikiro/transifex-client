@@ -24,6 +24,7 @@ except ImportError:
 
 from email.parser import Parser
 from urllib3.exceptions import SSLError
+from urllib3.util.ssl_ import create_urllib3_context
 from six.moves import input
 from txclib.urls import API_URLS
 from txclib.exceptions import (
@@ -127,47 +128,45 @@ def determine_charset(response):
     return "utf-8"
 
 
+def get_ssl_context():
+    ssl_context = create_urllib3_context(
+        cert_reqs=CERT_REQUIRED
+    )
+    if os.environ.get('TX_USE_SYSTEM_STORE'):
+        ssl_context.load_default_certs()
+    else:
+        ssl_context.load_verify_locations(cafile=certs_file())
+    return ssl_context
+
+
 def make_request(method, host, url, username, password, fields=None,
                  skip_decode=False, get_params={}):
 
-    # Initialize http and https pool managers
-    num_pools = 1
-    managers = {}
+    pool_args = {
+        "num_pools": 1
+    }
 
     if host.lower().startswith("http://"):
         scheme = "http"
-        if "http_proxy" in os.environ:
-            proxy_url = urllib3.util.url.parse_url(os.environ["http_proxy"])
-            managers["http"] = urllib3.ProxyManager(
-                proxy_url=proxy_url.url,
-                proxy_headers=urllib3.util.make_headers(
-                    user_agent=user_agent_identifier(),
-                    proxy_basic_auth=proxy_url.auth),
-                num_pools=num_pools
-            )
-        else:
-            managers["http"] = urllib3.PoolManager(num_pools=num_pools)
     elif host.lower().startswith("https://"):
         scheme = "https"
-        if "https_proxy" in os.environ:
-            proxy_url = urllib3.util.url.parse_url(os.environ["https_proxy"])
-            managers["https"] = urllib3.ProxyManager(
-                proxy_url=proxy_url.url,
-                proxy_headers=urllib3.util.make_headers(
-                    user_agent=user_agent_identifier(),
-                    proxy_basic_auth=proxy_url.auth),
-                num_pools=num_pools,
-                cert_reqs=CERT_REQUIRED,
-                ca_certs=certs_file()
-            )
-        else:
-            managers["https"] = urllib3.PoolManager(
-                num_pools=num_pools,
-                cert_reqs=CERT_REQUIRED,
-                ca_certs=certs_file()
-            )
+        pool_args['ssl_context'] = get_ssl_context()
     else:
         raise Exception("Unknown scheme")
+
+    proxy_env = "{}_proxy".format(scheme)
+    if proxy_env in os.environ:
+        proxy_url = urllib3.util.url.parse_url(os.environ[proxy_env])
+        pool_args.update({
+            "proxy_url": proxy_url.url,
+            "proxy_headers": urllib3.util.make_headers(
+                user_agent=user_agent_identifier(),
+                proxy_basic_auth=proxy_url.auth
+            ),
+        })
+        manager = urllib3.ProxyManager(**pool_args)
+    else:
+        manager = urllib3.PoolManager(**pool_args)
 
     charset = None
     headers = urllib3.util.make_headers(
@@ -179,7 +178,6 @@ def make_request(method, host, url, username, password, fields=None,
 
     response = None
     try:
-        manager = managers[scheme]
         # All arguments must be bytes, not unicode
         encoded_request = encode_args(manager.request)
         response = encoded_request(
