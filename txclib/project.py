@@ -5,7 +5,6 @@ import re
 import fnmatch
 import datetime
 import time
-import urllib3
 import six
 
 try:
@@ -22,7 +21,6 @@ except ImportError:
 from requests.exceptions import HTTPError
 from slugify import slugify
 
-from txclib import web
 from txclib import api
 from txclib import utils
 from txclib import messages
@@ -626,7 +624,7 @@ class Project(object):
                        "than your uploaded files.\nAre you sure you want to "
                        "continue?")
 
-                if not confirm(prompt=msg, default=False):
+                if not utils.confirm(prompt=msg, default=False):
                     logger.info("Aborting...")
                     return
 
